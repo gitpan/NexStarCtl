@@ -28,29 +28,31 @@ print "LONs=$lon LATs=$lat\n";
 
 my $tm=time();
 print "$tm\n";
-#print "SETTIME= ".tc_set_time($port,$tm+60,2,1)."\n";
+print "SETTIME= ".tc_set_time($port,$tm,2,1)."\n";
 
-my ($date,$time,$tz,$dst) = tc_get_time_str($port);
+#my ($date,$time,$tz,$dst) = tc_get_time_str($port);
 
-print "$date, $time, $tz, $dst\n";
+#print "$date, $time, $tz, $dst\n";
 
 #print "GOTO = ".tc_goto_rade_p($port,11*15,21)."\n";
 
 #sleep(2);
 #print "GOTO Cancel = ".tc_goto_cancel($port)."\n";
 
-print "TRACKING SET= ".tc_set_tracking_mode($port,2)."\n";
+#print "TRACKING SET= ".tc_set_tracking_mode($port,0)."\n";
 print "TRACKING = ".tc_get_tracking_mode($port)."\n";
 
-#tc_slew_fixed($port,TC_AXIS_RA_AZM,TC_DIR_POSITIVE,9); 
+#tc_slew_variable($port,TC_AXIS_RA_AZM,TC_DIR_POSITIVE,15.25); 
 #sleep(2);
-#tc_slew_fixed($port,TC_AXIS_DE_ALT,TC_DIR_NEGATIVE,9);
+#tc_slew_variable($port,TC_AXIS_DE_ALT,TC_DIR_POSITIVE,1);
 #sleep(2);
 #tc_slew_fixed($port,TC_AXIS_RA_AZM,TC_DIR_NEGATIVE,0);
 #sleep(2);
-#tc_slew_fixed($port,TC_AXIS_DE_ALT,TC_DIR_NEGATIVE,0);
+#tc_slew_fixed($port,TC_AXIS_DE_ALT,TC_DIR_POSITIVE,0);
 
-#print "TRACKING SET= ".tc_set_tracking_mode($port,2)."\n";
+print "TRACKING = ".tc_get_tracking_mode($port)."\n";
+
+print "TRACKING SET= ".tc_set_tracking_mode($port,2)."\n";
 print "TRACKING = ".tc_get_tracking_mode($port)."\n";
 
 

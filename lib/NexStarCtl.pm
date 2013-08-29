@@ -102,7 +102,7 @@ our @EXPORT = qw(
 	TC_AXIS_DE_ALT	
 );
 
-our $VERSION = "0.01";
+our $VERSION = "0.02";
 
 use constant {
 	TC_TRACK_OFF => 0,
@@ -805,12 +805,13 @@ sub tc_slew_variable {
 		$direction = _TC_DIR_NEGATIVE;
 	}
 	
-	$rate = int($rate) * 4;
+	$rate = int(4*$rate);
 	my $rateH = int($rate / 256);
 	my $rateL = $rate % 256;
+	print "RATEf : $rateH $rateL\n";
 
 	$port->write("P");
-	$port->write(chr(2));
+	$port->write(chr(3));
 	$port->write(chr($axis));
 	$port->write(chr($direction));
 	$port->write(chr($rateH));
