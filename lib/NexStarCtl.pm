@@ -102,7 +102,7 @@ our @EXPORT = qw(
 	TC_AXIS_DE_ALT	
 );
 
-our $VERSION = "0.02";
+our $VERSION = "0.03";
 
 use constant {
 	TC_TRACK_OFF => 0,
@@ -1093,8 +1093,8 @@ sub nex2dd ($){
 	my $d2_factor = hex(substr($nexres, 5, 4)) / 65536;
 	my $d1 = 360 * $d1_factor; 
 	my $d2 = 360 * $d2_factor;
-	$d2 = $d2 - 360 if ($d2 > 90);
 	$d2 = $d2 + 360 if ($d2 < -90);
+	$d2 = $d2 - 360 if ($d2 > 90);
 
 	return($d1, $d2);
 }
@@ -1111,8 +1111,8 @@ sub pnex2dd ($){
 	my $d2_factor = hex(substr($nexres, 9, 8)) / 0xffffffff;
 	my $d1 = 360 * $d1_factor;
 	my $d2 = 360 * $d2_factor;
-	$d2 = $d2 - 360 if ($d2 > 90);
 	$d2 = $d2 + 360 if ($d2 < -90);
+	$d2 = $d2 - 360 if ($d2 > 90);
 
 	return($d1, $d2);
 }
