@@ -102,7 +102,7 @@ our @EXPORT = qw(
 	TC_AXIS_DE_ALT	
 );
 
-our $VERSION = "0.03";
+our $VERSION = "0.04";
 
 use constant {
 	TC_TRACK_OFF => 0,
@@ -144,28 +144,34 @@ sub open_telescope_port($) {
 	$port->baudrate(9600); 
 	$port->parity("none"); 
 	$port->databits(8); 
-	$port->stopbits(1);  
+	$port->stopbits(1); 
+	$port->datatype('raw');    
 	$port->write_settings;
 	$port->read_char_time(0);     # don't wait for each character
 	$port->read_const_time(4000); # 4 second per unfulfilled "read" call
 	return $port;
 }
 
-=item read_telescope(port)
+=item read_telescope(port, len)
 
-Reads data from the telescope. In case nothing is read undef is returned.
+Reads data from the telescope. On error or in case less than len bytes are
+read undef is returned.
 
 =cut
-sub read_telescope($) {
-	my ($port) = @_;
+sub read_telescope($$) {
+	my ($port,$len) = @_;
 	my $response;
 	my $char;
 	my $count;
+	my $total=0;
 	do {
 		($count,$char)=$port->read(1);
 		if ($count == 0) { return undef; }
+		$total += $count;
 		$response .= $char;
-	} while ($char ne "#");
+	} while ($total < $len);
+	
+	if ($char ne "#") { return undef; }
 	return $response;
 }
 
@@ -213,7 +219,7 @@ sub tc_check_align($) {
 	my ($port) = @_;
 
 	$port->write("J");
-	my $response = read_telescope($port);
+	my $response = read_telescope($port,2);
 	if (defined $response) {
 		return ord(substr($response, 0, 1));
 	} else {
@@ -247,7 +253,7 @@ sub tc_goto_rade {
 		$nex=dd2nex($ra, $de);
 		$port->write("R".$nex);
 	}
-	my $response = read_telescope($port);
+	my $response = read_telescope($port,1);
 	if (defined $response) {
 		return 1;
 	} else {
@@ -284,7 +290,7 @@ sub tc_goto_azalt {
 		$nex=dd2nex($az, $alt);
 		$port->write("B".$nex);
 	}
-	my $response = read_telescope($port);
+	my $response = read_telescope($port,1);
 	if (defined $response) {
 		return 1;
 	} else {
@@ -307,22 +313,22 @@ tc_get_rade_p uses precise GET. If no response received undef is returned.
 sub tc_get_rade {
 	my ($port, $precise) = @_;
 	
-	if((defined $precise) and ($precise =! 0)) {
-		$port->write("e");
-	} else {
-		$port->write("E");
-	}
-	my $response = read_telescope($port);
-	if (! defined $response) {
-		return undef;
-	} 
-	
 	my $ra;
 	my $de;
 	
 	if((defined $precise) and ($precise =! 0)) {
+		$port->write("e");
+		my $response = read_telescope($port, 18);
+		if (! defined $response) {
+			return undef;
+		} 
 		($ra,$de) = pnex2dd($response);
 	} else {
+		$port->write("E");
+		my $response = read_telescope($port, 10);
+		if (! defined $response) {
+			return undef;
+		} 
 		($ra,$de) = nex2dd($response);
 	}
 	
@@ -344,22 +350,22 @@ tc_get_azalt_p uses precise GET. If no response received undef is returned.
 sub tc_get_azalt {
 	my ($port, $precise) = @_;
 	
-	if((defined $precise) and ($precise =! 0)) {
-		$port->write("z");
-	} else {
-		$port->write("Z");
-	}
-	my $response = read_telescope($port);
-	if (! defined $response) {
-		return undef;
-	} 
-	
 	my $az;
 	my $alt;
 	
 	if((defined $precise) and ($precise =! 0)) {
+		$port->write("z");
+		my $response = read_telescope($port, 18);
+		if (! defined $response) {
+			return undef;
+		} 
 		($az,$alt) = pnex2dd($response);
 	} else {
+		$port->write("Z");
+		my $response = read_telescope($port, 10);
+		if (! defined $response) {
+			return undef;
+		} 
 		($az,$alt) = nex2dd($response);
 	}
 	
@@ -395,7 +401,7 @@ sub tc_sync_rade {
 		$nex=dd2nex($ra, $de);
 		$port->write("S".$nex);
 	}
-	my $response = read_telescope($port);
+	my $response = read_telescope($port, 1);
 	if (defined $response) {
 		return 1;
 	} else {
@@ -416,7 +422,7 @@ sub tc_goto_in_progress($) {
 	my ($port) = @_;
 
 	$port->write("L");
-	my $response = read_telescope($port);
+	my $response = read_telescope($port, 2);
 	if (defined $response) {
 		return substr($response, 0, 1);
 	} else {
@@ -433,7 +439,7 @@ sub tc_goto_cancel($) {
 	my ($port) = @_;
 		        
 	$port->write("M");
-	my $response = read_telescope($port);
+	my $response = read_telescope($port, 1);
 	if (defined $response) {
 		return 1;
 	} else {
@@ -451,7 +457,7 @@ sub tc_echo($$) {
 	my ($port, $char) = @_;
 
 	$port->write("K".substr($char, 0, 1));
-	my $response = read_telescope($port);
+	my $response = read_telescope($port, 2);
 	if (defined $response) {
 		return substr($response, 0, 1);
 	} else {
@@ -469,7 +475,7 @@ sub tc_get_model($) {
 	my ($port) = @_;
 
 	$port->write("m");
-	my $response = read_telescope($port);
+	my $response = read_telescope($port, 2);
 	if (defined $response) {
 		return ord(substr($response, 0, 1));
 	} else {
@@ -487,7 +493,7 @@ sub tc_get_version($) {
 	my ($port) = @_;
 
 	$port->write("V");
-	my $response = read_telescope($port);
+	my $response = read_telescope($port, 3);
 	if (defined $response) {
 		return ord(substr($response, 0, 1)).
 			   ".".ord(substr($response, 1, 1));
@@ -513,7 +519,7 @@ sub tc_get_location {
 	my ($port,$str) = @_;
 
 	$port->write("w");
-	my $response = read_telescope($port);
+	my $response = read_telescope($port, 9);
 	if (! defined $response) {
 		return undef;
 	}
@@ -594,7 +600,7 @@ sub tc_set_location {
 	$port->write(chr($lons));
 	$port->write(chr($iswest));
 
-	my $response = read_telescope($port);
+	my $response = read_telescope($port, 1);
 	if (defined $response) {
 		return 1;
 	} else {
@@ -618,7 +624,7 @@ sub tc_get_time {
 	my ($port,$str) = @_;
 
 	$port->write("h");
-	my $response = read_telescope($port);
+	my $response = read_telescope($port, 9);
 	if (! defined $response) {
 		return undef;
 	}
@@ -679,7 +685,7 @@ sub tc_set_time {
 	$port->write(chr($tz));
 	$port->write(chr($dst));
 
-	my $response = read_telescope($port);
+	my $response = read_telescope($port, 1);
 	if (defined $response) {
 		return 1;
 	} else {
@@ -698,7 +704,7 @@ sub tc_get_tracking_mode($) {
 	my ($port) = @_;
 
 	$port->write("t");
-	my $response = read_telescope($port);
+	my $response = read_telescope($port, 2);
 	if (defined $response) {
 		return ord(substr($response, 0, 1));
 	} else {
@@ -722,7 +728,7 @@ sub tc_set_tracking_mode($$) {
 	}
 	$port->write("T");
 	$port->write(chr($mode));
-	my $response = read_telescope($port);
+	my $response = read_telescope($port, 1);
 	if (defined $response) {
 		return 1;
 	} else {
@@ -771,7 +777,7 @@ sub tc_slew_fixed {
 	$port->write(chr(0));
 	$port->write(chr(0));
 	
-	my $response = read_telescope($port);
+	my $response = read_telescope($port, 1);
 	if (defined $response) {
 		return 1;
 	} else {
@@ -819,7 +825,7 @@ sub tc_slew_variable {
 	$port->write(chr(0));
 	$port->write(chr(0));
 	
-	my $response = read_telescope($port);
+	my $response = read_telescope($port, 1);
 	if (defined $response) {
 		return 1;
 	} else {
