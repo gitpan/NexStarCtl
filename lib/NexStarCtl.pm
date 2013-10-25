@@ -69,11 +69,13 @@ our @EXPORT = qw(
 	notnum precess round 
 	d2hms d2dms d2dm dms2d hms2d
 	dd2nex dd2pnex nex2dd pnex2dd
-	
+
+	get_model_name
+
 	open_telescope_port 
 	close_telescope_port
 	read_telescope 
-	
+
 	tc_check_align
 	tc_goto_rade tc_goto_rade_p
 	tc_goto_azalt tc_goto_azalt_p
@@ -89,12 +91,12 @@ our @EXPORT = qw(
 	tc_set_time tc_set_location
 	tc_get_tracking_mode tc_set_tracking_mode
 	tc_slew_variable tc_slew_fixed
-	
+
 	TC_TRACK_OFF
 	TC_TRACK_ALT_AZ
 	TC_TRACK_EQ_NORTH
 	TC_REACK_EQ_SOUTH
-	
+
 	TC_DIR_POSITIVE
 	TC_DIR_NEGATIVE
 
@@ -102,7 +104,7 @@ our @EXPORT = qw(
 	TC_AXIS_DE_ALT	
 );
 
-our $VERSION = "0.04";
+our $VERSION = "0.05";
 
 use constant {
 	TC_TRACK_OFF => 0,
@@ -125,6 +127,20 @@ use constant {
 	DEG2RAD => 3.1415926535897932384626433832795/180.0,
 	RAD2DEG => 180.0/3.1415926535897932384626433832795
 };
+
+my %mounts = (
+	1 => "NexStar GPS Series",
+	3 => "NexStar i-Series",
+	4 => "NexStar i-Series SE",
+	5 => "CGE",
+	6 => "Advanced GT",
+	7 => "SLT",
+	9 => "CPC",
+	10 => "GT",
+	11 => "NexStar 4/5 SE",
+	12 => "NexStar 6/8 SE",
+	19 => "Advanced VX"
+);
 
 =head1 TESCOPE COMMUNICATION
 
@@ -831,6 +847,18 @@ sub tc_slew_variable {
 	} else {
 		return undef;
 	}
+}
+
+=item get_model_name(model_id)
+
+Return the name of the mount by the id from tc_get_model().
+If the mount is not known undef is returned.
+
+=cut
+
+sub get_model_name($) {
+	my ($model_id) = @_;
+	return $mounts{$model_id};
 }
 
 =back

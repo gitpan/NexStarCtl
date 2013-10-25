@@ -1,5 +1,8 @@
 Revision history for Perl extension NexStarCtl.
 
+0.05  Fri Oct 25 17:01:44 2013
+	- add get_model_name()
+
 0.04  Sun Sep 29 15:40:22 2013
 	- Fix read_telescope() it needs $len parameter because '#' does not 
 	  always indicate end of responce.

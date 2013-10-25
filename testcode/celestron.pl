@@ -2,8 +2,12 @@
 use strict;
 use NexStarCtl;
 
-print "(0,".TC_AXIS_RA_AZM.",".TC_DIR_POSITIVE.",3)";
+print "(0,".TC_AXIS_RA_AZM.",".TC_DIR_POSITIVE.",3)\n";
 
+
+print get_model_name(1)."\n";
+print get_model_name(2)."\n";
+print get_model_name(19)."\n";
 
 my $port = open_telescope_port("/dev/cu.usbserial"); 
 
