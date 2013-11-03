@@ -1,5 +1,8 @@
 Revision history for Perl extension NexStarCtl.
 
+0.06  Sun Nov  3 13:16:30 2013
+	- fix the ID of Advanced VX
+
 0.05  Fri Oct 25 17:01:44 2013
 	- add get_model_name()
 

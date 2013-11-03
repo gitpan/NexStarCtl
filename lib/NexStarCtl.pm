@@ -104,7 +104,7 @@ our @EXPORT = qw(
 	TC_AXIS_DE_ALT	
 );
 
-our $VERSION = "0.05";
+our $VERSION = "0.06";
 
 use constant {
 	TC_TRACK_OFF => 0,
@@ -139,7 +139,7 @@ my %mounts = (
 	10 => "GT",
 	11 => "NexStar 4/5 SE",
 	12 => "NexStar 6/8 SE",
-	19 => "Advanced VX"
+	20 => "Advanced VX"
 );
 
 =head1 TESCOPE COMMUNICATION
