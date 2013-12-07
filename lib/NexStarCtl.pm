@@ -51,7 +51,10 @@ NexStar GPS-SA, NexStar iSeries, NexStar SE Series, NexStar GT, CPC, SLT, Advanc
 
 Communication to the hand control is 9600 bits/sec, no parity and one stop bit via the RS-232 port on the base of the
 hand control.
- 
+
+For extended example how to use this perl module look in to the distribution folder for  nexstarctl/nexstarctl.pl.
+This program is a complete console tool to control NexStar telesctopes based on NexStarCtl module.
+
 =cut
 
 package NexStarCtl;
@@ -63,7 +66,7 @@ use strict;
 use Exporter;
 our @ISA = qw(Exporter);
 our @EXPORT = qw( 
-	$version 
+	VERSION
 	
 	DEG2RAD RAD2DEG 
 	notnum precess round 
@@ -95,7 +98,7 @@ our @EXPORT = qw(
 	TC_TRACK_OFF
 	TC_TRACK_ALT_AZ
 	TC_TRACK_EQ_NORTH
-	TC_REACK_EQ_SOUTH
+	TC_TRACK_EQ_SOUTH
 
 	TC_DIR_POSITIVE
 	TC_DIR_NEGATIVE
@@ -104,13 +107,13 @@ our @EXPORT = qw(
 	TC_AXIS_DE_ALT	
 );
 
-our $VERSION = "0.08";
+our $VERSION = "0.09";
 
 use constant {
 	TC_TRACK_OFF => 0,
 	TC_TRACK_ALT_AZ => 1,
 	TC_TRACK_EQ_NORTH => 2,
-	TC_REACK_EQ_SOUTH => 3,
+	TC_TRACK_EQ_SOUTH => 3,
 	
 	TC_DIR_POSITIVE => 1,
 	TC_DIR_NEGATIVE => 0,
@@ -527,7 +530,7 @@ If no response received undef is returned.
 
 =item tc_get_location_str(port)
 
-This function returns the stored location coordinates as string.
+This function returns the stored location coordinates lon and lat as strings.
 If no response received undef is returned.
 
 =cut
@@ -657,7 +660,7 @@ sub tc_get_time {
 	
 	if((defined $str) and ($str =! 0)) {
 		my $time=sprintf("%2d:%02d:%02d",$h,$m,$s);
-		my $date=sprintf("%d.%02d.%04d",$day,$mon,$year);
+		my $date=sprintf("%02d-%02d-%04d",$day,$mon,$year);
 		return ($date,$time, $tz, $dst);
 	} else {
 		my $time = timelocal($s,$m,$h,$day,$mon-1,$year);
@@ -787,7 +790,7 @@ sub tc_get_tracking_mode($) {
 
 Sets the tracking mode of the mount to one of the folowing:
 TC_TRACK_OFF, TC_TRACK_ALT_AZ, TC_TRACK_EQ_NORTH, TC_REACK_EQ_SOUTH.
-If the node is not one of the listed -1 is returned.
+If the mode is not one of the listed -1 is returned.
 If no response received undef is returned.
 
 =cut
@@ -1182,8 +1185,12 @@ sub nex2dd ($){
 	my $d2_factor = hex(substr($nexres, 5, 4)) / 65536;
 	my $d1 = 360 * $d1_factor; 
 	my $d2 = 360 * $d2_factor;
-	$d2 = $d2 + 360 if ($d2 < -90);
-	$d2 = $d2 - 360 if ($d2 > 90);
+
+	# bring $d2 in [-90,+90] range
+	# use 90.00001 to fix some float errors
+	# that lead +90 to be converted to -270
+	$d2 = $d2 + 360 if ($d2 < -90.00001);
+	$d2 = $d2 - 360 if ($d2 > 90.00001);
 
 	return($d1, $d2);
 }
@@ -1200,8 +1207,12 @@ sub pnex2dd ($){
 	my $d2_factor = hex(substr($nexres, 9, 8)) / 0xffffffff;
 	my $d1 = 360 * $d1_factor;
 	my $d2 = 360 * $d2_factor;
-	$d2 = $d2 + 360 if ($d2 < -90);
-	$d2 = $d2 - 360 if ($d2 > 90);
+
+	# bring $d2 in [-90,+90] range
+	# use 90.00001 to fix some float errors
+	# that lead +90 to be converted to -270
+	$d2 = $d2 + 360 if ($d2 < -90.00001);
+	$d2 = $d2 - 360 if ($d2 > 90.00001);
 
 	return($d1, $d2);
 }
