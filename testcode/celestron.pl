@@ -11,7 +11,7 @@ use NexStarCtl;
 #print get_model_name(2)."\n";
 #print get_model_name(19)."\n";
 
-my $port = open_telescope_port("/dev/cu.usbserial"); 
+my $port = open_telescope_port("/dev/ttyUSB0"); 
 #my $port = open_telescope_port("/dev/tty.NoZAP-PL2303-00004006");
 
 if (!defined $port) {
@@ -25,6 +25,9 @@ print "VERSION = ".tc_get_version($port)."\n";
 
 print "Align = ".tc_check_align($port)."\n";
 
+my $response = tc_pass_through_cmd($port, 1, 176, 55, 0, 0, 0, 2);
+print "GPS is present:". ord($response). "\n";
+
 #print "SET LOC= ".tc_set_location($port,  dms2d("22:58:09"), dms2d("44:05:31"))."\n";
 
 #my ($lon,$lat) = tc_get_location($port);
@@ -33,13 +36,13 @@ print "Align = ".tc_check_align($port)."\n";
 #my ($lon,$lat) = tc_get_location_str($port);
 #print "LONs=$lon LATs=$lat\n";
 
-my $tm=time()+1720000;
-print "$tm+3600\n";
-print "SETTIME= ".tc_set_time($port,$tm,2,1)."\n";
+#my $tm=time();
+#print "$tm\n";
+#print "SETTIME= ".tc_set_time($port,$tm,2,0)."\n";
 
-my ($date,$time,$tz,$dst) = tc_get_time_str($port);
+#my ($date,$time,$tz,$dst) = tc_get_time_str($port);
 
-print "$date, $time, $tz, $dst\n";
+#print "$date, $time, $tz, $dst\n";
 
 
 #my $echo;
@@ -96,22 +99,63 @@ print "$date, $time, $tz, $dst\n";
 #print "Set RA(-) Backlash: " . tc_set_backlash($port,TC_AXIS_RA_AZM,TC_DIR_NEGATIVE,0) . "\n";
 #print "Set DE(+) Backlash: " . tc_set_backlash($port,TC_AXIS_DE_ALT,TC_DIR_POSITIVE,0) . "\n";
 #print "Set DE(-) Backlash: " . tc_set_backlash($port,TC_AXIS_DE_ALT,TC_DIR_NEGATIVE,0) . "\n";
-
 #print "Get RA(+) Backlash: " . tc_get_backlash($port,TC_AXIS_RA_AZM,TC_DIR_POSITIVE) . "\n";
+#print "Get RA(-) Backlash: " . tc_get_backlash($port,TC_AXIS_RA_AZM,TC_DIR_NEGATIVE) . "\n";
+#print "Get DE(+) Backlash: " . tc_get_backlash($port,TC_AXIS_DE_ALT,TC_DIR_POSITIVE) . "\n";
+#print "Get DE(-) Backlash: " . tc_get_backlash($port,TC_AXIS_DE_ALT,TC_DIR_NEGATIVE) . "\n";
 
-print "Get RA autoguide rate: " . tc_get_autoguide_rate($port,TC_AXIS_RA_AZM) . "\n";
-print "Get DE autoguide rate: " . tc_get_autoguide_rate($port,TC_AXIS_DE_ALT) . "\n";
+#print "Get RA autoguide rate: " . tc_get_autoguide_rate($port,TC_AXIS_RA_AZM) . "\n";
+#print "Get DE autoguide rate: " . tc_get_autoguide_rate($port,TC_AXIS_DE_ALT) . "\n";
 
-print "Set RA autoguide rate: " . tc_set_autoguide_rate($port,TC_AXIS_RA_AZM,50) . "\n";
-print "Get RA autoguide rate: " . tc_get_autoguide_rate($port,TC_AXIS_RA_AZM) . "\n";
+#print "Set RA autoguide rate: " . tc_set_autoguide_rate($port,TC_AXIS_RA_AZM,50) . "\n";
+#print "Get RA autoguide rate: " . tc_get_autoguide_rate($port,TC_AXIS_RA_AZM) . "\n";
 
-print "Set DE autoguide rate: " . tc_set_autoguide_rate($port,TC_AXIS_DE_ALT,50) . "\n";
-print "Get DE autoguide rate: " . tc_get_autoguide_rate($port,TC_AXIS_DE_ALT) . "\n";
+#print "Set DE autoguide rate: " . tc_set_autoguide_rate($port,TC_AXIS_DE_ALT,50) . "\n";
+#print "Get DE autoguide rate: " . tc_get_autoguide_rate($port,TC_AXIS_DE_ALT) . "\n";
+
+my @data = pec_get_data($port);
+
+#print "set data:".pec_set_data($port,\@data). "\n";
+
+#my @data2 = pec_get_data($port);
+
+my $index = 0;
+my $val2=0;
+foreach my $val (@data) {
+	print $val." - ".$data[$index]."\n";
+	$val2+=0.1;
+	$data[$index] = $val2;
+	$index++;
+}
+
+print "set data:".pec_set_data($port,\@data). "\n";
+
+#print "INDEX_FOUND=".pec_index_found($port)."\n";
+#print "SEEK_INDEX=".pec_seek_index($port)."\n";
+#sleep (5);
+#print "INDEX_FOUND=".pec_index_found($port)."\n";
+
+#print "PALYBACK_INDEX=".pec_get_playback_index($port)."\n";
+
+#print "PEC_RECORD_DONE=".pec_record_complete($port)."\n";
+
+#pec_record($port, PEC_START);
+
+#print "PEC_RECORD_DONE=".pec_record_done($port)."\n";
+#sleep(5);
+
+#print "PEC_RECORD_DONE=".pec_record_done($port)."\n";
+
+#pec_record($port, PEC_STOP);
+
+#print "PEC_RECORD_COMPLETE=".pec_record_complete($port)."\n";
+
+#pec_playback($port, PEC_START);
+
+
 
 close_telescope_port($port);
 
-
-#my $ra1=hms2d("22:33:32");
 #my $dec1=dms2d("-44:22:11");
 
 #my $ra1=222.333;
