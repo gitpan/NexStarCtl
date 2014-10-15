@@ -52,6 +52,8 @@ NexStar GPS-SA, NexStar iSeries, NexStar SE Series, NexStar GT, CPC, SLT, Advanc
 Communication to the hand control is 9600 bits/sec, no parity and one stop bit via the RS-232 port on the base of the
 hand control.
 
+Communication can be established over TCP/IP if nexbridge is running on the computer connected to the telescope.
+
 For extended example how to use this perl module look in to the distribution folder for  nexstarctl/nexstarctl.pl.
 This program is a complete console tool to control NexStar telesctopes based on NexStarCtl module.
 
@@ -61,6 +63,7 @@ package NexStarCtl;
 
 use POSIX;
 use Time::Local;
+use IO::Socket::INET;
 use strict;
 use Exporter;
 
@@ -69,6 +72,10 @@ if ($^O eq "MSWin32") {
 } else {
 	eval "use Device::SerialPort"; die $@ if $@;
 }
+
+my $is_tcp=0;
+
+use constant TIMEOUT => 4;
 
 our @ISA = qw(Exporter);
 our @EXPORT = qw( 
@@ -104,11 +111,6 @@ our @EXPORT = qw(
 	tc_get_autoguide_rate tc_set_autoguide_rate
 	tc_get_backlash tc_set_backlash
 
-	pec_seek_index pec_index_found
-	pec_record pec_record_complete
-	pec_playback pec_get_playback_index
-	pec_get_data_len pec_set_data pec_get_data
-
 	TC_TRACK_OFF
 	TC_TRACK_ALT_AZ
 	TC_TRACK_EQ_NORTH
@@ -118,34 +120,28 @@ our @EXPORT = qw(
 	TC_DIR_NEGATIVE
 
 	TC_AXIS_RA_AZM
-	TC_AXIS_DE_ALT
-
-	PEC_START
-	PEC_STOP
+	TC_AXIS_DE_ALT	
 );
 
-our $VERSION = "0.12";
+our $VERSION = "0.13";
 
 use constant {
 	TC_TRACK_OFF => 0,
 	TC_TRACK_ALT_AZ => 1,
 	TC_TRACK_EQ_NORTH => 2,
 	TC_TRACK_EQ_SOUTH => 3,
-
+	
 	TC_DIR_POSITIVE => 1,
 	TC_DIR_NEGATIVE => 0,
-
+	
 	TC_AXIS_RA_AZM => 1,
 	TC_AXIS_DE_ALT => 0,
-
+	
 	_TC_DIR_POSITIVE => 6,
 	_TC_DIR_NEGATIVE => 7,
-
+	
 	_TC_AXIS_RA_AZM => 16,
 	_TC_AXIS_DE_ALT => 17,
-
-	PEC_START => 1,
-	PEC_STOP => 0,
 
 	DEG2RAD => 3.1415926535897932384626433832795/180.0,
 	RAD2DEG => 180.0/3.1415926535897932384626433832795
@@ -173,17 +169,37 @@ my %mounts = (
 =item open_telescope_port(port_name)
 
 Opens a communication port to the telescope by name (like "/dev/ttyUSB0") and
-returns it to be used in other functions. In case of error undef is returned.
+returns it to be used in other finctions. If the port_name has "tcp://" prefix
+the rest of the string is interptered as an IP address and port where to connnect to
+(like "tcp://localhost:9999"). In case of error undef is returned.
+
+NOTE: To be used with TCP you need to run nexbridge on the remote computer.
 
 =cut
 sub open_telescope_port($) {
-	my ($tty) = @_;
+	my ($portname) = @_;
 
 	my $port;
-	if ($^O eq "MSWin32") {
-		$port = new Win32::SerialPort($tty);
+
+	if ($portname =~ /^tcp:\/\//) {
+		$portname =~ s/^tcp:\/\///;
+		$is_tcp=1;
 	} else {
-		$port = new Device::SerialPort($tty);
+		$is_tcp=0;
+	}
+
+	if ($is_tcp) {
+		my $port = new IO::Socket::INET(
+			PeerHost => $portname,
+			Proto => 'tcp'
+		) or return undef;
+		return $port;
+	}
+
+	if ($^O eq "MSWin32") {
+		$port = new Win32::SerialPort($portname);
+	} else {
+		$port = new Device::SerialPort($portname);
 	}
 	if (! defined $port) {return undef;} 	
 	#$port->debug(1);
@@ -194,9 +210,33 @@ sub open_telescope_port($) {
 	$port->datatype('raw');    
 	$port->write_settings;
 	$port->read_char_time(0);     # don't wait for each character
-	$port->read_const_time(4000); # 4 second per unfulfilled "read" call
+	$port->read_const_time(TIMEOUT*1000);
 	return $port;
 }
+
+
+# For internal library use only!
+sub read_byte($) {
+	my ($port) = @_;
+
+	my ($byte, $count, $char);
+
+	if ($is_tcp == 0) {
+		($count,$char)=$port->read(1);
+	} else {
+		eval {
+			local $SIG{ALRM} = sub { die "TimeOut" };
+			alarm TIMEOUT;
+			$count=$port->read($char,1);
+			alarm 0;
+		};
+		if ($@ and $@ !~ /TimedOut/) {
+			return undef;
+		}
+	}
+	return ($count,$char);
+}
+
 
 =item read_telescope(port, len)
 
@@ -211,7 +251,7 @@ sub read_telescope($$) {
 	my $count;
 	my $total=0;
 	do {
-		($count,$char)=$port->read(1);
+		($count,$char)=read_byte($port);
 		if ($count == 0) { return undef; }
 		$total += $count;
 		$response .= $char;
@@ -220,7 +260,7 @@ sub read_telescope($$) {
 	# if the last byte is not '#', this means that the device did
 	# not respond and the next byte should be '#' (hopefully)
 	if ($char ne "#") {
-		($count,$char)=$port->read(1);
+		($count,$char)=read_byte($port);
 		return undef;
 	}
 	return $response;
@@ -290,10 +330,10 @@ If no response received, undef is returned.
 =cut
 sub tc_goto_rade {
 	my ($port, $ra, $de, $precise) = @_;
-	if (($ra < -0.1) or ($ra > 360.1)) {
+	if (($ra < 0) or ($ra > 360)) {
 		return -1;
 	}
-	if (($de < -90.1) or ($de > 90.1)) {
+	if (($de < -90) or ($de > 90)) {
 		return -2;
 	}
 	my $nex;
@@ -327,10 +367,10 @@ If no response received, undef is returned.
 =cut
 sub tc_goto_azalt {
 	my ($port, $az, $alt, $precise) = @_;
-	if (($az < -0.1) or ($az > 360.1)) {
+	if (($az < 0) or ($az > 360)) {
 		return -1;
 	}
-	if (($alt < -90.1) or ($alt > 90.1)) {
+	if (($alt < -90) or ($alt > 90)) {
 		return -2;
 	}
 	my $nex;
@@ -500,7 +540,7 @@ sub tc_goto_cancel($) {
 
 =item tc_echo(port, char)
 
-Checks the communication with the telescope. This function sends char to the telescope and 
+Checks the communication with the telecope. This function sends char to the telescope and 
 returns the echo received. If no response received, undef is returned.
 
 =cut
@@ -706,7 +746,7 @@ sub tc_get_time_str {
 
 =item tc_set_time(port, time, timezone, daylightsaving)
 
-This function sets the time (in unix time format), timezone (in hours) and daylight saving time(0|1).
+This function sets the time (in unixtime format), timezone (in hours) and daylight saving time(0|1).
 On success 1 is returned.
 If no response received, undef is returned. If the mount is known to have RTC
 (currently only CGE and AdvancedVX) the date/time is set to RTC too.
@@ -1015,7 +1055,7 @@ sub tc_get_backlash($$$) {
 		$direction = 0x41; # Get negative backlash
 	}
 
-	my $response = tc_pass_through_cmd($port, 1, $axis, $direction, 0, 0, 0, 1);
+	my $response =  tc_pass_through_cmd($port, 1, $axis, $direction, 0, 0, 0, 1);
 	if (defined $response) {
 		return ord(substr($response, 0, 1));
 	} else {
@@ -1072,317 +1112,16 @@ sub tc_pass_through_cmd($$$$$$$$) {
 	my ($port, $msg_len, $dest_id, $cmd_id, $data1, $data2, $data3, $res_len) = @_;
 
 	$port->write("P");
-	$port->write(pack("c", $msg_len));
-	$port->write(pack("c", $dest_id));
-	$port->write(pack("c", $cmd_id));
-	$port->write(pack("c", $data1));
-	$port->write(pack("c", $data2));
-	$port->write(pack("c", $data3));
-	$port->write(pack("c", $res_len));
+	$port->write(chr($msg_len));
+	$port->write(chr($dest_id));
+	$port->write(chr($cmd_id));
+	$port->write(chr($data1));
+	$port->write(chr($data2));
+	$port->write(chr($data3));
+	$port->write(chr($res_len));
 
 	# we should read $res_len + 1 byes to accomodate '#' at the end
 	return read_telescope($port, $res_len + 1);
-}
-
-=back
-
-=head1 PERIODIC ERROR CORRECTION FUNCTIONS
-
-The following commands are not officially documented by Celestron. Please note that these
-commands are reverse engineered and may not work exactly as expected.
-
-=over 8
-
-=item pec_index_found(port)
-
-Determine if the position index is found and the mount will know from where to start
-PEC data playback.
-
-If the index is found 1 is returned. If it is not found 0 is returned. In case of an error
-the function returs undef.
-
-=cut
-
-sub pec_index_found($) {
-	my ($port) = @_;
-
-	my $response = tc_pass_through_cmd($port, 1, _TC_AXIS_RA_AZM, 0x18, 0, 0, 0, 1);
-	if (defined $response) {
-		if (ord(substr($response, 0, 1))) {
-			return 1;
-		} else {
-			return 0;
-		}
-	} else {
-		return undef;
-	}
-}
-
-=item pec_seek_index(port)
-
-This command will move the mount slightly until the position index is found, so that the PEC
-playback can be started from the correct position. The telescope will not return to the
-original position when the index is found. The completion of the operation can be checked with
-pec_index_found().
-
-On success 1 is returned. In case of an error undef is returned.
-
-=cut
-
-sub pec_seek_index($) {
-	my ($port) = @_;
-
-	my $response = tc_pass_through_cmd($port, 1, _TC_AXIS_RA_AZM, 0x19, 0, 0, 0, 0);
-	if (defined $response) {
-		return 1;
-	} else {
-		return undef;
-	}
-}
-
-=item pec_record(port, action)
-
-Start or stop the recording of periodic error correction data. The action parameter can
-be PEC_START or PEC_STOP to start or stop the recording. The completion of the recording
-can be monitored with pec_record_complete(). The data is collected by the mount from the
-user or auto-guider corrections made during the recording process. This recording can take
-10-15 minutes depending on the type of the mount.
-
-On success 1 is returned. If a wrong parameter is provided -1 is returned. In case of an
-error undef is returned.
-
-=cut
-
-sub pec_record($$) {
-	my ($port,$action) = @_;
-	my $cmd_id;
-
-	if ($action == PEC_START) {
-		$cmd_id = 0x0C;  # Start PEC record
-	} elsif ($action == PEC_STOP){
-		$cmd_id = 0x16;  # Stop PEC record
-	} else {
-		return -1;
-	}
-
-	my $response = tc_pass_through_cmd($port, 1, _TC_AXIS_RA_AZM, $cmd_id, 0, 0, 0, 0);
-	if (defined $response) {
-		return 1;
-	} else {
-		return undef;
-	}
-}
-
-=item pec_record_complete(port)
-
-Check the completion of pec_record().
-
-If recording is complete 1 is returned. If recording is still in progress 0 is returned.
-In case of an error undef is returned.
-
-=cut
-
-sub pec_record_complete($) {
-	my ($port) = @_;
-
-	my $response = tc_pass_through_cmd($port, 1, _TC_AXIS_RA_AZM, 0x15, 0, 0, 0, 1);
-	if (defined $response) {
-		if (ord(substr($response, 0, 1))) {
-			return 1;
-		} else {
-			return 0;
-		}
-	} else {
-		return undef;
-	}
-}
-
-=item pec_playback(port, action)
-
-Start or stop PEC playback. The action parameter can be PEC_START or PEC_STOP
-to start or stop PEC playback respectively.
-
-On success 1 is returned. If a wrong parameter is provided -1 is returned. In case of an
-error undef is returned.
-
-=cut
-
-sub pec_playback($$) {
-	my ($port,$action) = @_;
-
-	if (($action != PEC_START) and ($action != PEC_STOP)) {
-		return -1;
-	}
-
-	my $response = tc_pass_through_cmd($port, 2, _TC_AXIS_RA_AZM, 0x0d, $action, 0, 0, 0);
-	if (defined $response) {
-		return 1;
-	} else {
-		return undef;
-	}
-}
-
-=item pec_get_playback_index(port)
-
-Get the index of the PEC data for the curent mount position in the range form 0 to
-the value returned by pec_get_data_len() minus 1.
-
-If the index position is not found yet, the function will always return 0.
-On error undef is returned.
-
-=cut
-
-sub pec_get_playback_index($) {
-	my ($port) = @_;
-
-	my $response = tc_pass_through_cmd($port, 1, _TC_AXIS_RA_AZM, 0x0e, 0, 0, 0, 1);
-	if (defined $response) {
-		return ord(substr($response, 0, 1));
-	} else {
-		return undef;
-	}
-}
-
-=item pec_get_data_len(port)
-
-Get the length of the internal register array in which the PEC data is stored.
-
-On error undef is returned.
-
-=cut
-
-sub pec_get_data_len($) {
-	my ($port) = @_;
-
-	my $response = tc_pass_through_cmd($port, 2, _TC_AXIS_RA_AZM, 0x30, 0x3f, 0, 0, 1);
-	if (defined $response) {
-		return ord(substr($response, 0, 1));
-	} else {
-		return undef;
-	}
-}
-
-sub _pec_set_data($$$) {
-	my ($port, $index, $data) = @_;
-
-	my $response = tc_pass_through_cmd($port, 4, _TC_AXIS_RA_AZM, 0x31, 0x40+$index, $data, 0, 0);
-	if (defined $response) {
-		return 1;
-	} else {
-		return undef;
-	}
-}
-
-sub _pec_get_data($$) {
-	my ($port, $index) = @_;
-
-	my $response = tc_pass_through_cmd($port, 2, _TC_AXIS_RA_AZM, 0x30, 0x40+$index, 0, 0, 1);
-	if (defined $response) {
-		return unpack("c", substr($response, 0, 1));
-	} else {
-		return undef;
-	}
-}
-
-=item pec_set_data(port, data)
-
-Upload the periodic error correction data to the mount. The data parameter is a reference to an
-array with size that matches the value returned by pec_get_data_len(). The values must be in
-arc seconds.
-
-On success 1 is returned. If the size of the data array does not match the mount data size -1
-is returned. If any of the PEC values is too big and can not fit in the internal data format -2 is returned.
-On other error undef is returned.
-
-=cut
-
-sub pec_set_data($$) {
-	my ($port, $data) = @_;
-	my $res;
-
-	my $len = pec_get_data_len($port);
-	if (!defined $len) {
-		return undef;
-	}
-
-	if ($len != @{$data}) {
-		return -1;
-	}
-
-	my $index = 0;
-	my $current = 0;
-	foreach my $val (@{$data}) {
-		my $diff = $val - $current;
-
-		# I have no idea why the values are different for positive and negative numbers
-		# I thought the coefficient should be 0.0772 arcsec/unit as the resolution of
-		# 24bit number for 360 degrees. I tried to mach as best as I could the values
-		# returned by Celestron's PECTool and I came up with this numbers...
-		my $rdiff;
-		if ($diff < 0) {
-			$rdiff = sprintf("%.0f", $val / 0.0845) - sprintf("%.0f", $current / 0.0845);
-		} else {
-			$rdiff = sprintf("%.0f", $val / 0.0774) - sprintf("%.0f", $current / 0.0774);
-		}
-		if (($rdiff > 127) or ($rdiff < -127)) {
-			return -2;
-		}
-
-		# print "$index => $rdiff\t(diff = $diff, val = $val)\n";
-		$res = _pec_set_data($port, $index, $rdiff);
-		if (!defined ($res)) {
-			return undef;
-		}
-		$index++;
-		$current = $val;
-	}
-
-	$res = pec_record($port, PEC_STOP);
-	if (!defined ($res)) {
-		return undef;
-	}
-	return 1;
-}
-
-=item pec_get_data(port)
-
-Download the periodic error correction data from the mount. An array with the correction values is
-returned. The size of the array is equal to the value returned by pec_get_data_len(). The values
-are in arc seconds.
-
-On error undef is returned.
-
-=cut
-
-sub pec_get_data($) {
-	my ($port) = @_;
-	my @data;
-
-	my $len = pec_get_data_len($port);
-	# my $len = 11;
-	if (!defined $len) {
-		return undef;
-	}
-
-	my $current = 0;
-	for (my $index = 0; $index < $len; $index++) {
-		my $rdiff = _pec_get_data($port, $index);
-		# my $rdiff = $b[$index];
-		if (!defined ($rdiff)) {
-			return undef;
-		}
-
-		# I have no idea why the values are different for positive and negative numbers.
-		# Pease se the note in pec_set_data()!
-		if ($rdiff > 0) {
-			$current += $rdiff * 0.0774;
-		} else {
-			$current += $rdiff * 0.0845;
-		}
-		$data[$index] = $current;
-		# print "$index => $current\n";
-	}
-	return @data;
 }
 
 =back
@@ -1740,7 +1479,7 @@ For more information about the NexStar commands please refer to the original
 protocol specification described here:
 http://www.celestron.com/c3/images/files/downloads/1154108406_nexstarcommprot.pdf
 
-Some of the undocumented commands are described here:
+The undocumented commands are described here:
 http://www.paquettefamily.ca/nexstar/NexStar_AUX_Commands_10.pdf
 
 =head1 AUTHOR
@@ -1754,10 +1493,6 @@ Copyright (C) 2013-2014 by Rumen Bogdanovski
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.12.4 or,
 at your option, any later version of Perl 5 you may have available.
-
-The author assumes no liability or responsibility for damage or injury
-to persons or property arising from any use of this product. Use it at
-your own risk.
 
 =cut
 
